@@ -1,0 +1,129 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Represents a user's profile information.",
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name, which is used as the Panel Name."
+        },
+        "clientName": {
+          "type": "string",
+          "description": "The name of the client associated with the user profile."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The user's email address."
+        },
+        "photoURL": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the user's profile picture, typically hosted on Firebase Storage."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "user"],
+          "description": "The user's role."
+        },
+        "sharedWith": {
+          "type": "array",
+          "description": "A list of user emails that have been granted access to this panel.",
+          "items": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
+      "required": ["displayName", "email", "role"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Represents a single financial transaction (income or expense).",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "The date of the transaction."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the transaction."
+        },
+        "amount": {
+          "type": "number",
+          "description": "The amount of the transaction."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["income", "expense"],
+          "description": "The type of transaction."
+        },
+        "category": {
+          "type": "string",
+          "description": "The category of the transaction."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["paid", "pending"],
+          "description": "The status of the expense."
+        },
+        "incomeType": {
+          "type": "string",
+          "enum": ["fixed", "variable", "projected"],
+          "description": "The type of income."
+        },
+        "expenseType": {
+          "type": "string",
+          "enum": ["single", "monthly_fixed", "installments"],
+          "description": "The type of expense."
+        },
+        "installments": {
+          "type": "object",
+          "properties": {
+            "current": { "type": "number" },
+            "total": { "type": "number" }
+          },
+          "description": "Installment details."
+        }
+      },
+      "required": ["date", "description", "amount", "type", "category", "status"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Represents a transaction category.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the category."
+        },
+        "icon": {
+          "type": "string",
+          "description": "The name of the lucide-react icon for the category."
+        }
+      },
+      "required": ["name", "icon"]
+    }
+  },
+  "auth": {
+    "providers": ["password", "google.com"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores public profile information for each user."
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Stores all transactions for a specific user."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Stores all available transaction categories."
+    }
+  }
+}
