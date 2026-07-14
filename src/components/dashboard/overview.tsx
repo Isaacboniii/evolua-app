@@ -61,7 +61,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-[hsl(var(--chart-2))]">{formatCurrency(fixedIncome)}</div>
-              <p className="text-xs text-muted-foreground">Rendas recorrentes este mês.</p>
+              <p className="text-xs text-muted-foreground">Rendas recorrentes no mês selecionado.</p>
             </CardContent>
           </Card>
         </Link>
@@ -73,7 +73,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-[hsl(var(--chart-2))]">{formatCurrency(variableIncome)}</div>
-              <p className="text-xs text-muted-foreground">Rendas não recorrentes este mês.</p>
+              <p className="text-xs text-muted-foreground">Rendas não recorrentes no mês selecionado.</p>
             </CardContent>
           </Card>
         </Link>
@@ -105,7 +105,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-[hsl(var(--chart-1))]">{formatCurrency(fixedExpenses)}</div>
-              <p className="text-xs text-muted-foreground">Despesas recorrentes este mês.</p>
+              <p className="text-xs text-muted-foreground">Despesas recorrentes no mês selecionado.</p>
             </CardContent>
           </Card>
         </Link>
@@ -117,7 +117,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-[hsl(var(--chart-1))]">{formatCurrency(variableExpenses)}</div>
-              <p className="text-xs text-muted-foreground">Despesas pontuais e parceladas este mês.</p>
+              <p className="text-xs text-muted-foreground">Despesas pontuais e parceladas no mês selecionado.</p>
             </CardContent>
           </Card>
         </Link>

@@ -37,7 +37,7 @@ export default function TransactionsPage() {
       <Header />
       <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
         <div className="flex items-center gap-4">
-          <Link href="/" passHref>
+          <Link href="/financas" passHref>
             <Button variant="outline" size="icon" className="h-8 w-8">
               <ArrowLeft className="h-4 w-4" />
               <span className="sr-only">Voltar</span>

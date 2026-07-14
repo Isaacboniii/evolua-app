@@ -13,7 +13,6 @@ import { useAuth, useUserProfile } from "@/firebase";
 import { signOut } from "firebase/auth";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ThemeToggle } from "../theme-toggle";
 
 export function Header() {
   const { user, profile } = useUserProfile();
@@ -33,7 +32,6 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-card px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-      <ThemeToggle />
       <div className="w-full flex-1">
         {/* Can add search form here if needed */}
       </div>

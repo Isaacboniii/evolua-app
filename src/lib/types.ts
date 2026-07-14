@@ -30,6 +30,14 @@ export type Category = {
   icon: string;
 };
 
+export type Goal = {
+  id: string;
+  name: string;
+  targetAmount: number;
+  savedAmount: number;
+  deadline?: string;
+};
+
 export type Budget = {
   category: string;
   amount: number;

@@ -26,9 +26,9 @@ export function ThemeProvider({
 }: ThemeProviderProps) {
     const [theme, setTheme] = useState<Theme>(() => {
         if (typeof window === 'undefined') {
-            return 'system';
+            return 'dark';
         }
-        return (localStorage.getItem('ui-theme') as Theme) || 'system';
+        return (localStorage.getItem('ui-theme') as Theme) || 'dark';
     });
 
 

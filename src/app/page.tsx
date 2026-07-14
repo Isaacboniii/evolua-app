@@ -1,15 +1,12 @@
 'use client'
 
-import { Dashboard } from "@/components/dashboard/dashboard";
+import { PanelHub } from "@/components/hub/panel-hub";
 import { AuthGate } from '@/components/auth-gate';
-import { useUser } from '@/firebase';
 
-export default function DashboardPage() {
-  const { user } = useUser();
-
+export default function HomePage() {
   return (
     <AuthGate>
-        {user ? <Dashboard userId={user.uid} /> : <div>Carregando...</div>}
+      <PanelHub basePath="" />
     </AuthGate>
   );
 }

@@ -2,28 +2,57 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     function isAdmin() {
-      return request.auth != null &&
+      return isSignedIn() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    match /users {
-      allow list: if isAdmin();
+    // Garante que o campo `role` não está sendo alterado nesta escrita.
+    // request.resource.data = como o doc VAI ficar; resource.data = como ele ESTÁ hoje.
+    function roleUnchanged() {
+      return request.resource.data.role == resource.data.role;
     }
 
     match /users/{userId} {
-      allow read: if request.auth.uid == userId || isAdmin();
-      allow write: if request.auth.uid == userId || isAdmin();
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+
+      // Perfil sempre nasce como 'user'. O admin cria painéis para os clientes;
+      // o cliente cria o próprio perfil no primeiro login (Google/email).
+      allow create: if isAdmin() ||
+                       (isOwner(userId) && request.resource.data.role == 'user');
+
+      // O dono edita o próprio perfil, mas NÃO pode mexer no próprio `role`.
+      // Só o admin pode alterar papéis.
+      allow update: if isAdmin() ||
+                       (isOwner(userId) && roleUnchanged());
+
+      // Excluir um painel é ação administrativa.
+      allow delete: if isAdmin();
 
       match /transactions/{transactionId} {
-        allow read, delete: if request.auth.uid == userId || isAdmin();
-        allow create, update: if request.auth.uid == userId;
+        allow read, delete: if isOwner(userId) || isAdmin();
+        allow create, update: if isOwner(userId);
+      }
+
+      match /goals/{goalId} {
+        allow read, delete: if isOwner(userId) || isAdmin();
+        allow create, update: if isOwner(userId);
       }
     }
 
     match /categories/{categoryId} {
-      allow read: if request.auth != null;
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
   }
