@@ -51,7 +51,7 @@ export function PanelHub({ basePath, backHref, backLabel = 'Voltar', panelName }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0b0b0f] via-[#12100c] to-[#0b0b0f] text-amber-50">
+    <div className="min-h-screen w-full bg-gradient-to-b from-[#0b0b0f] via-[#12100c] to-[#0b0b0f] text-amber-50">
       {/* Barra superior: voltar (admin) + ações de conta */}
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 pt-6">
         {backHref ? (
@@ -114,17 +114,17 @@ export function PanelHub({ basePath, backHref, backLabel = 'Voltar', panelName }
         </div>
 
         {/* Grid de seções */}
-        <div className="mt-8 grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid w-full grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
           {sections.map(({ key, title, subtitle, icon: Icon }) => (
             <Link
               key={key}
               href={sectionHref(key)}
-              className="group flex flex-col rounded-2xl border border-amber-400/15 bg-white/[0.03] p-5 transition-all hover:-translate-y-0.5 hover:border-amber-400/40 hover:bg-white/[0.06]"
+              className="group flex flex-col rounded-2xl border border-amber-400/15 bg-white/[0.03] p-4 transition-all hover:-translate-y-0.5 hover:border-amber-400/40 hover:bg-white/[0.06] sm:p-5"
             >
-              <Icon className="h-7 w-7 text-amber-400" strokeWidth={1.5} />
-              <h3 className="mt-4 text-base font-semibold text-amber-50">{title}</h3>
+              <Icon className="h-6 w-6 text-amber-400 sm:h-7 sm:w-7" strokeWidth={1.5} />
+              <h3 className="mt-3 text-sm font-semibold text-amber-50 sm:mt-4 sm:text-base">{title}</h3>
               <p className="mt-1 text-xs leading-relaxed text-amber-100/50">{subtitle}</p>
-              <span className="mt-5 flex h-7 w-7 items-center justify-center rounded-full border border-amber-400/30 text-amber-400 transition-transform group-hover:translate-x-0.5">
+              <span className="mt-4 flex h-7 w-7 items-center justify-center rounded-full border border-amber-400/30 text-amber-400 transition-transform group-hover:translate-x-0.5 sm:mt-5">
                 <ChevronRight className="h-4 w-4" />
               </span>
             </Link>

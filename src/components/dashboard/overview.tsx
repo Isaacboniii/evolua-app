@@ -51,8 +51,8 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
   const finalBalance = totalIncome - totalExpenses;
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <div className="grid gap-6">
+    <div className="grid grid-cols-2 gap-3 sm:gap-6">
+      <div className="grid gap-3 sm:gap-6">
         <Link href="/income/fixed">
           <Card className="hover:bg-muted/50 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -60,7 +60,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
               <Banknote className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-[hsl(var(--chart-2))]">{formatCurrency(fixedIncome)}</div>
+              <div className="text-xl font-bold sm:text-2xl text-[hsl(var(--chart-2))]">{formatCurrency(fixedIncome)}</div>
               <p className="text-xs text-muted-foreground">Rendas recorrentes no mês selecionado.</p>
             </CardContent>
           </Card>
@@ -72,7 +72,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-[hsl(var(--chart-2))]">{formatCurrency(variableIncome)}</div>
+              <div className="text-xl font-bold sm:text-2xl text-[hsl(var(--chart-2))]">{formatCurrency(variableIncome)}</div>
               <p className="text-xs text-muted-foreground">Rendas não recorrentes no mês selecionado.</p>
             </CardContent>
           </Card>
@@ -85,7 +85,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
             </CardHeader>
             <CardContent>
                 <div>
-                  <div className="text-2xl font-bold text-[hsl(var(--chart-2))]">{formatCurrency(paidIncome)}</div>
+                  <div className="text-xl font-bold sm:text-2xl text-[hsl(var(--chart-2))]">{formatCurrency(paidIncome)}</div>
                   <p className="text-xs text-muted-foreground">Rendas recebidas</p>
                 </div>
                 <div className="mt-2">
@@ -96,7 +96,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
             </Card>
         </Link>
       </div>
-      <div className="grid gap-6">
+      <div className="grid gap-3 sm:gap-6">
         <Link href="/expenses/fixed">
           <Card className="hover:bg-muted/50 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -104,7 +104,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
               <Repeat className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-[hsl(var(--chart-1))]">{formatCurrency(fixedExpenses)}</div>
+              <div className="text-xl font-bold sm:text-2xl text-[hsl(var(--chart-1))]">{formatCurrency(fixedExpenses)}</div>
               <p className="text-xs text-muted-foreground">Despesas recorrentes no mês selecionado.</p>
             </CardContent>
           </Card>
@@ -116,7 +116,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
               <CreditCard className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-[hsl(var(--chart-1))]">{formatCurrency(variableExpenses)}</div>
+              <div className="text-xl font-bold sm:text-2xl text-[hsl(var(--chart-1))]">{formatCurrency(variableExpenses)}</div>
               <p className="text-xs text-muted-foreground">Despesas pontuais e parceladas no mês selecionado.</p>
             </CardContent>
           </Card>
@@ -129,7 +129,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
             </CardHeader>
             <CardContent>
               <div>
-                <div className="text-2xl font-bold text-[hsl(var(--chart-1))]">{formatCurrency(paidExpenses)}</div>
+                <div className="text-xl font-bold sm:text-2xl text-[hsl(var(--chart-1))]">{formatCurrency(paidExpenses)}</div>
                 <p className="text-xs text-muted-foreground">Despesas pagas</p>
               </div>
               <div className="mt-2">
@@ -140,14 +140,14 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
             </Card>
         </Link>
       </div>
-       <Card className="md:col-span-2">
+       <Card className="col-span-2">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Saldo Final Projetado</CardTitle>
           <Wallet className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className={cn(
-              "text-2xl font-bold",
+              "text-xl font-bold sm:text-2xl",
               finalBalance >= 0 ? 'text-[hsl(var(--chart-2))]' : 'text-[hsl(var(--chart-1))]'
           )}>
             {formatCurrency(finalBalance)}

@@ -102,7 +102,7 @@ export function Dashboard({ userId, backHref }: { userId: string; backHref?: str
             className="flex flex-1 rounded-2xl border border-amber-400/15 bg-white/[0.03]"
             data-x-chunk="dashboard-02-chunk-1"
             >
-            <div className="container mx-auto py-8">
+            <div className="mx-auto w-full max-w-[1400px] px-2 py-6 sm:px-4 lg:px-6 lg:py-8">
                 <div className="grid gap-6">
                     <Overview transactions={monthTransactions} />
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

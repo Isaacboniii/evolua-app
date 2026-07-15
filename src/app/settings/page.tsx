@@ -161,18 +161,18 @@ export default function SettingsPage() {
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                     <div className="space-y-2">
                         <Label htmlFor="photo">Carregar Foto de Perfil (JPG, PNG, max 5MB)</Label>
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                              <Avatar className="h-20 w-20">
                                 <AvatarImage src={currentPhotoURL} alt="User profile picture" />
                                 <AvatarFallback>{fallbackInitial}</AvatarFallback>
                             </Avatar>
-                            <Input 
-                                id="photo" 
-                                type="file" 
-                                accept="image/jpeg, image/png" 
-                                onChange={handleFileChange} 
-                                className="max-w-xs" 
-                                disabled={isSubmitting} 
+                            <Input
+                                id="photo"
+                                type="file"
+                                accept="image/jpeg, image/png"
+                                onChange={handleFileChange}
+                                className="w-full max-w-xs min-w-0"
+                                disabled={isSubmitting}
                             />
                         </div>
                     </div>

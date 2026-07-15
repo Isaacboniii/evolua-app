@@ -46,7 +46,7 @@ export default function TransactionsPage() {
           <h1 className="text-lg font-semibold md:text-2xl">Todas as Transações</h1>
         </div>
         <div
-          className="flex flex-1 rounded-lg border border-dashed shadow-sm p-4"
+          className="flex flex-1 rounded-lg border border-dashed shadow-sm p-2 sm:p-4"
         >
             <TransactionsTable 
                 initialTransactions={allTransactions} 

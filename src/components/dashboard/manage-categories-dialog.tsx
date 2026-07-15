@@ -127,7 +127,7 @@ export function ManageCategoriesDialog({ isOpen, setIsOpen }: ManageCategoriesDi
           <DialogDescription>Adicione, edite ou remova as categorias de transação.</DialogDescription>
         </DialogHeader>
         
-        <div className="grid grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-8">
             <div>
                 <h3 className="font-semibold mb-4">{editingCategory ? 'Editar Categoria' : 'Adicionar Nova Categoria'}</h3>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
