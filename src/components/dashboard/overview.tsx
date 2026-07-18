@@ -13,7 +13,21 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-export function Overview({ transactions }: { transactions: Transaction[] }) {
+// As rotas de detalhe (/income, /expenses...) operam sempre no painel do usuário
+// LOGADO — para membro/admin vendo painel alheio seriam uma lista vazia editável.
+// Nesses casos o card vira estático, sem link. Definido FORA do Overview para o
+// React preservar a identidade do componente entre renders (evita remount dos cards).
+const CardLink = ({
+  href,
+  isReadOnly,
+  children,
+}: {
+  href: string;
+  isReadOnly: boolean;
+  children: React.ReactNode;
+}) => (isReadOnly ? <>{children}</> : <Link href={href}>{children}</Link>);
+
+export function Overview({ transactions, isReadOnly = false }: { transactions: Transaction[]; isReadOnly?: boolean }) {
   const fixedIncome = transactions
     .filter((t) => t.type === 'income' && t.incomeType === 'fixed')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -53,8 +67,8 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:gap-6">
       <div className="grid gap-3 sm:gap-6">
-        <Link href="/income/fixed">
-          <Card className="hover:bg-muted/50 transition-colors">
+        <CardLink isReadOnly={isReadOnly} href="/income/fixed">
+          <Card className={cn(!isReadOnly && 'hover:bg-muted/50 transition-colors')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Renda Fixa</CardTitle>
               <Banknote className="h-4 w-4 text-muted-foreground" />
@@ -64,9 +78,9 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
               <p className="text-xs text-muted-foreground">Rendas recorrentes no mês selecionado.</p>
             </CardContent>
           </Card>
-        </Link>
-        <Link href="/income/variable">
-          <Card className="hover:bg-muted/50 transition-colors">
+        </CardLink>
+        <CardLink isReadOnly={isReadOnly} href="/income/variable">
+          <Card className={cn(!isReadOnly && 'hover:bg-muted/50 transition-colors')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Renda Variável</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -76,9 +90,9 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
               <p className="text-xs text-muted-foreground">Rendas não recorrentes no mês selecionado.</p>
             </CardContent>
           </Card>
-        </Link>
-        <Link href="/income">
-            <Card className="hover:bg-muted/50 transition-colors">
+        </CardLink>
+        <CardLink isReadOnly={isReadOnly} href="/income">
+            <Card className={cn(!isReadOnly && 'hover:bg-muted/50 transition-colors')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Renda Total</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -94,11 +108,11 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
                 </div>
             </CardContent>
             </Card>
-        </Link>
+        </CardLink>
       </div>
       <div className="grid gap-3 sm:gap-6">
-        <Link href="/expenses/fixed">
-          <Card className="hover:bg-muted/50 transition-colors">
+        <CardLink isReadOnly={isReadOnly} href="/expenses/fixed">
+          <Card className={cn(!isReadOnly && 'hover:bg-muted/50 transition-colors')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Despesas Fixas</CardTitle>
               <Repeat className="h-4 w-4 text-muted-foreground" />
@@ -108,9 +122,9 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
               <p className="text-xs text-muted-foreground">Despesas recorrentes no mês selecionado.</p>
             </CardContent>
           </Card>
-        </Link>
-        <Link href="/expenses/variable">
-          <Card className="hover:bg-muted/50 transition-colors">
+        </CardLink>
+        <CardLink isReadOnly={isReadOnly} href="/expenses/variable">
+          <Card className={cn(!isReadOnly && 'hover:bg-muted/50 transition-colors')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Despesas Variáveis</CardTitle>
               <CreditCard className="h-4 w-4 text-muted-foreground" />
@@ -120,9 +134,9 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
               <p className="text-xs text-muted-foreground">Despesas pontuais e parceladas no mês selecionado.</p>
             </CardContent>
           </Card>
-        </Link>
-        <Link href="/expenses">
-            <Card className="hover:bg-muted/50 transition-colors">
+        </CardLink>
+        <CardLink isReadOnly={isReadOnly} href="/expenses">
+            <Card className={cn(!isReadOnly && 'hover:bg-muted/50 transition-colors')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Despesas</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -138,7 +152,7 @@ export function Overview({ transactions }: { transactions: Transaction[] }) {
               </div>
             </CardContent>
             </Card>
-        </Link>
+        </CardLink>
       </div>
        <Card className="col-span-2">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

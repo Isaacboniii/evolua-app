@@ -34,4 +34,5 @@ export {
 } from "./provider";
 export { useUser } from "./auth/use-user";
 export { useUserProfile } from "./auth/use-user-profile";
+export { useActivePanel } from "./auth/use-active-panel";
 export { useCollection } from "./firestore/use-collection";

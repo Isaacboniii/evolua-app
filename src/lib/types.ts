@@ -5,7 +5,18 @@ export type UserProfile = {
   email: string;
   photoURL?: string;
   role: 'admin' | 'user';
-  sharedWith?: string[];
+  // uid do dono do painel do qual este usuário é membro (somente leitura).
+  // Presença do campo => o app resolve o painel do dono em vez do próprio.
+  panelOwnerId?: string;
+};
+
+// Doc de invites/{email} — o ID é sempre o email do convidado em minúsculas.
+export type PanelInvite = {
+  id: string;
+  panelOwnerId: string;
+  panelName?: string;
+  invitedBy?: string;
+  createdAt?: string;
 };
 
 export type Transaction = {

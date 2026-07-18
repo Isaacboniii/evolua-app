@@ -5,7 +5,7 @@ import { TransactionsTable } from "@/components/transactions/transactions-table"
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { useCollection, useFirestore, useUser } from '@/firebase';
+import { useCollection, useFirestore, useActivePanel } from '@/firebase';
 import { useMemo } from 'react';
 import { query, where, collection } from 'firebase/firestore';
 import { AuthGate } from "@/components/auth-gate";
@@ -13,15 +13,16 @@ import type { Transaction, Category } from "@/lib/types";
 
 export default function ExpensesPage() {
   const firestore = useFirestore();
-  const { user } = useUser();
+  // Membro vê o painel do dono em somente leitura; dono vê o próprio com escrita.
+  const { targetUserId, isReadOnly, loading } = useActivePanel();
 
   const transactionsQuery = useMemo(() => {
-    if (!firestore || !user) return null;
+    if (!firestore || !targetUserId) return null;
     return query(
-      collection(firestore, `users/${user.uid}/transactions`),
+      collection(firestore, `users/${targetUserId}/transactions`),
       where('type', '==', 'expense')
     );
-  }, [firestore, user]);
+  }, [firestore, targetUserId]);
   
   const { data: transactions, loading: transactionsLoading } = useCollection<Transaction>(transactionsQuery);
   
@@ -33,6 +34,16 @@ export default function ExpensesPage() {
   const categories = categoriesData || [];
 
   const expenseTransactions = transactions || [];
+
+  // Aguarda o perfil: sem isso o membro veria um flash do próprio painel
+  // (vazio, editável) antes de o panelOwnerId chegar e ligar o somente-leitura.
+  if (loading) {
+    return (
+      <AuthGate>
+        <div className="flex min-h-screen items-center justify-center bg-background">Carregando...</div>
+      </AuthGate>
+    );
+  }
 
   return (
     <AuthGate>
@@ -57,6 +68,7 @@ export default function ExpensesPage() {
                   transactionType="expense"
                   title="Todas as Despesas"
                   description="Uma lista de todas as suas despesas."
+                  isReadOnly={isReadOnly}
               />
           </div>
         </main>

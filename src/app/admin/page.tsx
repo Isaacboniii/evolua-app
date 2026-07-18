@@ -11,7 +11,7 @@ import { CreateUserDialog } from '@/components/admin/create-user-dialog';
 import { EditUserDialog } from '@/components/admin/edit-user-dialog';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal, Edit, Trash2, UserPlus } from 'lucide-react';
+import { MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
@@ -26,7 +26,6 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { InviteUserDialog } from '@/components/admin/invite-user-dialog';
 
 export default function AdminPage() {
     const firestore = useFirestore();
@@ -42,17 +41,10 @@ export default function AdminPage() {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const [userToInviteTo, setUserToInviteTo] = useState<UserProfile | null>(null);
-    const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
 
     const handleEdit = (user: UserProfile) => {
         setEditingUser(user);
         setIsEditDialogOpen(true);
-    };
-    
-    const handleInviteClick = (user: UserProfile) => {
-        setUserToInviteTo(user);
-        setIsInviteDialogOpen(true);
     };
 
     const handleDeleteClick = (userId: string) => {
@@ -138,10 +130,6 @@ export default function AdminPage() {
                                                     <Edit className="mr-2 h-4 w-4" />
                                                     Editar
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onSelect={() => handleInviteClick(user)}>
-                                                    <UserPlus className="mr-2 h-4 w-4" />
-                                                    Convidar usuário
-                                                </DropdownMenuItem>
                                                 <DropdownMenuItem
                                                     onSelect={() => handleDeleteClick(user.id)}
                                                     className="text-destructive focus:text-destructive"
@@ -164,13 +152,6 @@ export default function AdminPage() {
                     isOpen={isEditDialogOpen} 
                     setIsOpen={setIsEditDialogOpen} 
                     user={editingUser}
-                />
-            )}
-            {userToInviteTo && (
-                <InviteUserDialog 
-                    isOpen={isInviteDialogOpen} 
-                    setIsOpen={setIsInviteDialogOpen} 
-                    user={userToInviteTo}
                 />
             )}
              <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

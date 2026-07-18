@@ -23,32 +23,85 @@ service cloud.firestore {
       return request.resource.data.role == resource.data.role;
     }
 
+    // Membro somente-leitura de um painel: o perfil do usuário logado aponta
+    // (via panelOwnerId) para o dono `userId`. Custa um get(), por isso fica
+    // sempre à direita dos || — isOwner/isAdmin resolvem primeiro.
+    function isMember(userId) {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('panelOwnerId', '') == userId;
+    }
+
+    // O claim de panelOwnerId só é válido se existir um convite pendente para o
+    // email do usuário E o painel do convite bater com o que ele quer gravar.
+    // email_verified é obrigatório: sem isso, qualquer um poderia registrar o email
+    // convidado via API do Firebase Auth (sem confirmar a caixa postal) e capturar
+    // o acesso ao painel. Login Google já vem verificado; conta email/senha
+    // precisa confirmar o email antes do claim valer.
+    // Se o token não tiver email, a avaliação falha e nega acesso (fail closed).
+    function claimMatchesInvite() {
+      return request.auth.token.email_verified == true &&
+             exists(/databases/$(database)/documents/invites/$(request.auth.token.email.lower())) &&
+             get(/databases/$(database)/documents/invites/$(request.auth.token.email.lower())).data.panelOwnerId == request.resource.data.panelOwnerId;
+    }
+
+    // Impede que o usuário troque de painel sozinho num update comum.
+    // get() com default '' cobre docs que nunca tiveram o campo.
+    function panelOwnerUnchanged() {
+      return request.resource.data.get('panelOwnerId', '') == resource.data.get('panelOwnerId', '');
+    }
+
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
+      // Membro lê o doc do dono para resolver nome/dados do painel compartilhado.
+      allow get: if isOwner(userId) || isAdmin() || isMember(userId);
       allow list: if isAdmin();
 
       // Perfil sempre nasce como 'user'. O admin cria painéis para os clientes;
       // o cliente cria o próprio perfil no primeiro login (Google/email).
+      // panelOwnerId no payload só entra se houver convite válido para o email.
       allow create: if isAdmin() ||
-                       (isOwner(userId) && request.resource.data.role == 'user');
+                       (isOwner(userId) && request.resource.data.role == 'user' &&
+                        (!('panelOwnerId' in request.resource.data) || claimMatchesInvite()));
 
-      // O dono edita o próprio perfil, mas NÃO pode mexer no próprio `role`.
-      // Só o admin pode alterar papéis.
+      // O dono edita o próprio perfil, mas NÃO pode mexer no próprio `role`
+      // nem se vincular a um painel sem convite. Só o admin pode alterar papéis.
       allow update: if isAdmin() ||
-                       (isOwner(userId) && roleUnchanged());
+                       (isOwner(userId) && roleUnchanged() &&
+                        (panelOwnerUnchanged() || claimMatchesInvite()));
 
       // Excluir um painel é ação administrativa.
       allow delete: if isAdmin();
 
+      // Membro só LÊ o painel do dono; escrita e exclusão seguem restritas.
       match /transactions/{transactionId} {
-        allow read, delete: if isOwner(userId) || isAdmin();
+        allow read: if isOwner(userId) || isAdmin() || isMember(userId);
+        allow delete: if isOwner(userId) || isAdmin();
         allow create, update: if isOwner(userId);
       }
 
       match /goals/{goalId} {
-        allow read, delete: if isOwner(userId) || isAdmin();
+        allow read: if isOwner(userId) || isAdmin() || isMember(userId);
+        allow delete: if isOwner(userId) || isAdmin();
         allow create, update: if isOwner(userId);
       }
+    }
+
+    // Convite de membro: o ID do doc é o email do convidado em minúsculas.
+    // O convidado só enxerga/deleta o PRÓPRIO convite (get pelo email do token);
+    // deletar ao fazer claim mantém o fluxo: gravar panelOwnerId ANTES de deletar,
+    // pois claimMatchesInvite() valida contra o convite ainda existente.
+    match /invites/{inviteEmail} {
+      // get NÃO exige email_verified de propósito: o app precisa detectar o convite
+      // no login para pedir a verificação do email. Vaza apenas a existência do
+      // convite e o nome do painel — o claim em si (acesso aos dados) exige
+      // email verificado via claimMatchesInvite().
+      allow get: if isAdmin() ||
+                    (isSignedIn() && request.auth.token.email.lower() == inviteEmail);
+      allow list: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin() ||
+                       (isSignedIn() && request.auth.token.email_verified == true &&
+                        request.auth.token.email.lower() == inviteEmail);
     }
 
     match /categories/{categoryId} {

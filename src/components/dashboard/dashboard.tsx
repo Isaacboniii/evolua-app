@@ -7,7 +7,6 @@ import { CategorySpending } from "@/components/dashboard/category-spending";
 import { ProjectionsChart } from "@/components/dashboard/projections-chart";
 import type { Transaction, Category } from '@/lib/types';
 import { useCollection, useFirestore, useUser } from '@/firebase';
-import { useUserProfile } from '@/firebase/auth/use-user-profile';
 import { useMemo, useState } from 'react';
 import { collection, addDoc, query } from 'firebase/firestore';
 import { format, startOfMonth } from 'date-fns';
@@ -23,7 +22,6 @@ import { MonthPicker } from "./month-picker";
 export function Dashboard({ userId, backHref }: { userId: string; backHref?: string }) {
   const firestore = useFirestore();
   const { user: authUser } = useUser();
-  const { profile: viewingUserProfile } = useUserProfile();
 
   const isOwner = authUser?.uid === userId;
 
@@ -104,7 +102,7 @@ export function Dashboard({ userId, backHref }: { userId: string; backHref?: str
             >
             <div className="mx-auto w-full max-w-[1400px] px-2 py-6 sm:px-4 lg:px-6 lg:py-8">
                 <div className="grid gap-6">
-                    <Overview transactions={monthTransactions} />
+                    <Overview transactions={monthTransactions} isReadOnly={!isOwner} />
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                         <div className="lg:col-span-2">
                         <RecentTransactions

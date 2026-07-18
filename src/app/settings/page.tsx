@@ -19,6 +19,7 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { PanelMembersCard } from '@/components/settings/panel-members-card';
 
 const profileSchema = z.object({
   displayName: z.string().min(1, 'O nome de exibição é obrigatório.'),
@@ -195,6 +196,8 @@ export default function SettingsPage() {
                   </form>
                 </CardContent>
               </Card>
+
+              {profile?.role === 'admin' && <PanelMembersCard />}
             </div>
           </div>
         </main>
