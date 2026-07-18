@@ -9,6 +9,10 @@ export type UserProfile = {
   // Presença do campo => o app resolve o painel do dono em vez do próprio.
   // Gravado pelo admin (vínculo direto) ou pelo claim no primeiro login (convite).
   panelOwnerId?: string;
+  // Permissão do membro DENTRO do painel do dono: 'editor' pode escrever, ausente
+  // ou 'viewer' é somente leitura. Só o admin altera (garantido nas rules); membro
+  // não se autopromove. Sem panelOwnerId, o campo é irrelevante (o dono sempre escreve).
+  panelRole?: 'viewer' | 'editor';
 };
 
 // Convite pendente. O ID do doc é o email do convidado em minúsculas. É reivindicado

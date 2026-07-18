@@ -63,8 +63,9 @@ export default function FixedIncomePage() {
           <div
             className="flex flex-1 rounded-lg border border-dashed shadow-sm p-2 sm:p-4"
           >
-              <TransactionsTable 
-                  initialTransactions={fixedIncomeTransactions} 
+              <TransactionsTable
+                  targetUserId={targetUserId}
+                  initialTransactions={fixedIncomeTransactions}
                   categories={categories}
                   transactionType="income"
                   incomeType="fixed"

@@ -6,7 +6,7 @@ import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { CategorySpending } from "@/components/dashboard/category-spending";
 import { ProjectionsChart } from "@/components/dashboard/projections-chart";
 import type { Transaction, Category } from '@/lib/types';
-import { useCollection, useFirestore, useUser } from '@/firebase';
+import { useCollection, useFirestore } from '@/firebase';
 import { useMemo, useState } from 'react';
 import { collection, addDoc, query } from 'firebase/firestore';
 import { format, startOfMonth } from 'date-fns';
@@ -19,11 +19,11 @@ import { Button } from "@/components/ui/button";
 import { IncomeExpenseHistoryChart } from "./income-expense-history-chart";
 import { MonthPicker } from "./month-picker";
 
-export function Dashboard({ userId, backHref }: { userId: string; backHref?: string }) {
+export function Dashboard({ userId, isReadOnly = false, backHref }: { userId: string; isReadOnly?: boolean; backHref?: string }) {
   const firestore = useFirestore();
-  const { user: authUser } = useUser();
 
-  const isOwner = authUser?.uid === userId;
+  // isReadOnly vem do useActivePanel (via renderer): membro leitor não escreve,
+  // dono e membro-editor sim. As gravações sempre miram `userId` (o dono do painel).
 
   // Mês em foco no painel. Começa no mês atual.
   const [selectedMonth, setSelectedMonth] = useState<Date>(() => startOfMonth(new Date()));
@@ -102,7 +102,7 @@ export function Dashboard({ userId, backHref }: { userId: string; backHref?: str
             >
             <div className="mx-auto w-full max-w-[1400px] px-2 py-6 sm:px-4 lg:px-6 lg:py-8">
                 <div className="grid gap-6">
-                    <Overview transactions={monthTransactions} isReadOnly={!isOwner} />
+                    <Overview transactions={monthTransactions} isReadOnly={isReadOnly} />
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                         <div className="lg:col-span-2">
                         <RecentTransactions
@@ -110,7 +110,7 @@ export function Dashboard({ userId, backHref }: { userId: string; backHref?: str
                             categories={categories}
                             onAddTransaction={handleAddTransaction}
                             loading={transactionsLoading || categoriesLoading}
-                            isReadOnly={!isOwner}
+                            isReadOnly={isReadOnly}
                         />
                         </div>
                         <div className="space-y-6">

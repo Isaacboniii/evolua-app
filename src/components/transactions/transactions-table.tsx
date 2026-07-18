@@ -27,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore } from '@/firebase';
 import { collection, addDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -62,6 +62,10 @@ const transactionSchema = z.object({
 type TransactionFormData = z.infer<typeof transactionSchema>;
 
 interface TransactionsTableProps {
+    // Dono do painel onde as transações são gravadas. Para o dono é o próprio uid;
+    // para um membro-editor é o uid do dono — por isso NÃO se usa o uid logado aqui.
+    // Opcional porque o hook o resolve como string|undefined; as escritas têm guard.
+    targetUserId?: string;
     initialTransactions: Transaction[];
     categories: Category[];
     transactionType?: 'income' | 'expense';
@@ -72,7 +76,7 @@ interface TransactionsTableProps {
     isReadOnly?: boolean;
 }
 
-export function TransactionsTable({ initialTransactions, categories, transactionType, incomeType: preselectedIncomeType, expenseType: preselectedExpenseType, title, description, isReadOnly = false }: TransactionsTableProps) {
+export function TransactionsTable({ targetUserId, initialTransactions, categories, transactionType, incomeType: preselectedIncomeType, expenseType: preselectedExpenseType, title, description, isReadOnly = false }: TransactionsTableProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
@@ -80,7 +84,6 @@ export function TransactionsTable({ initialTransactions, categories, transaction
   const { toast } = useToast();
 
   const firestore = useFirestore();
-  const { user } = useUser();
 
   const { control, handleSubmit, register, reset, watch } = useForm<TransactionFormData>({
     resolver: zodResolver(transactionSchema),
@@ -115,7 +118,7 @@ export function TransactionsTable({ initialTransactions, categories, transaction
   }
 
   const onSubmit = (data: TransactionFormData) => {
-    if (!firestore || !user) return;
+    if (!firestore || !targetUserId) return;
 
     const { id, ...formData } = data;
 
@@ -138,7 +141,7 @@ export function TransactionsTable({ initialTransactions, categories, transaction
     }
     
     if (editingTransaction) {
-        const docRef = doc(firestore, `users/${user.uid}/transactions`, editingTransaction.id);
+        const docRef = doc(firestore, `users/${targetUserId}/transactions`, editingTransaction.id);
         setDoc(docRef, transactionPayload, { merge: true })
             .then(() => {
                 toast({
@@ -155,7 +158,7 @@ export function TransactionsTable({ initialTransactions, categories, transaction
                 errorEmitter.emit('permission-error', permissionError);
             });
     } else {
-        const transactionsCollection = collection(firestore, `users/${user.uid}/transactions`);
+        const transactionsCollection = collection(firestore, `users/${targetUserId}/transactions`);
         addDoc(transactionsCollection, transactionPayload)
             .then(() => {
                 toast({
@@ -179,8 +182,8 @@ export function TransactionsTable({ initialTransactions, categories, transaction
   };
 
   const handleDelete = (transactionId: string) => {
-    if (!firestore || !user) return;
-    const docRef = doc(firestore, `users/${user.uid}/transactions`, transactionId);
+    if (!firestore || !targetUserId) return;
+    const docRef = doc(firestore, `users/${targetUserId}/transactions`, transactionId);
     deleteDoc(docRef)
         .then(() => {
             toast({

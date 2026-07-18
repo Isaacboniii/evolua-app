@@ -63,8 +63,9 @@ export default function VariableIncomePage() {
           <div
             className="flex flex-1 rounded-lg border border-dashed shadow-sm p-2 sm:p-4"
           >
-              <TransactionsTable 
-                  initialTransactions={variableIncomeTransactions} 
+              <TransactionsTable
+                  targetUserId={targetUserId}
+                  initialTransactions={variableIncomeTransactions}
                   categories={categories}
                   transactionType="income"
                   incomeType="variable"

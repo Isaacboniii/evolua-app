@@ -32,6 +32,15 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('panelOwnerId', '') == userId;
     }
 
+    // Membro com permissão de ESCRITA no painel do dono `userId`. Só o admin marca
+    // panelRole='editor' (garantido nas regras de users abaixo), então isto é o
+    // gate que libera um membro a criar/editar/excluir dados do painel alheio.
+    // Reusa o get() de isMember (cacheado na mesma avaliação).
+    function isEditorMember(userId) {
+      return isMember(userId) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('panelRole', '') == 'editor';
+    }
+
     // O claim de panelOwnerId só é válido se existir um convite pendente para o
     // email do usuário E o painel do convite bater com o que ele quer gravar.
     // email_verified é obrigatório: sem isso, alguém poderia registrar o email
@@ -50,6 +59,20 @@ service cloud.firestore {
       return request.resource.data.get('panelOwnerId', '') == resource.data.get('panelOwnerId', '');
     }
 
+    // Impede o membro de se autopromover a editor. Só o admin muda panelRole.
+    function panelRoleUnchanged() {
+      return request.resource.data.get('panelRole', '') == resource.data.get('panelRole', '');
+    }
+
+    // O panelRole resultante é 'viewer' (ou ausente, que já é leitura). Usado para
+    // garantir que TODO claim/self-create nasça somente leitura: editor é privilégio
+    // que só o admin concede depois. Sem isso, um panelRole='editor' órfão (ex.: sobra
+    // de um vínculo anterior) seria silenciosamente reativado ao entrar noutro painel.
+    function newPanelRoleIsViewer() {
+      return !('panelRole' in request.resource.data) ||
+             request.resource.data.panelRole == 'viewer';
+    }
+
     match /users/{userId} {
       // Membro lê o doc do dono para resolver o painel compartilhado.
       allow get: if isOwner(userId) || isAdmin() || isMember(userId);
@@ -57,29 +80,37 @@ service cloud.firestore {
 
       // Perfil nasce como 'user'. O cliente cria o próprio no primeiro login e só
       // pode incluir panelOwnerId se houver um convite válido para o email (claim).
+      // panelRole no self-create só pode nascer viewer/ausente: editor é privilégio
+      // que só o admin concede, senão o claim viraria autopromoção.
       allow create: if isAdmin() ||
                        (isOwner(userId) && request.resource.data.role == 'user' &&
+                        newPanelRoleIsViewer() &&
                         (!('panelOwnerId' in request.resource.data) || claimMatchesInvite()));
 
-      // O dono edita o próprio perfil, mas NÃO muda o próprio `role` nem se vincula
-      // a um painel sem convite. Admin e claim são as exceções para panelOwnerId.
+      // Não-admin só edita o próprio perfil em dois modos:
+      //  A) mesmo painel: role E panelRole imutáveis (não se autopromove a editor);
+      //  B) claim de convite: pode ganhar panelOwnerId, mas SEMPRE como viewer — um
+      //     editor órfão de vínculo anterior não pode reativar em painel novo.
+      // Admin passa direto por qualquer um dos campos.
       allow update: if isAdmin() ||
                        (isOwner(userId) && roleUnchanged() &&
-                        (panelOwnerUnchanged() || claimMatchesInvite()));
+                        ((panelOwnerUnchanged() && panelRoleUnchanged()) ||
+                         (claimMatchesInvite() && newPanelRoleIsViewer())));
 
       allow delete: if isAdmin();
 
-      // Membro só LÊ o painel do dono; escrita e exclusão seguem restritas.
+      // Membro lê o painel do dono; membro-editor também escreve. Dono e admin
+      // mantêm o acesso de antes.
       match /transactions/{transactionId} {
         allow read: if isOwner(userId) || isAdmin() || isMember(userId);
-        allow delete: if isOwner(userId) || isAdmin();
-        allow create, update: if isOwner(userId);
+        allow delete: if isOwner(userId) || isAdmin() || isEditorMember(userId);
+        allow create, update: if isOwner(userId) || isEditorMember(userId);
       }
 
       match /goals/{goalId} {
         allow read: if isOwner(userId) || isAdmin() || isMember(userId);
-        allow delete: if isOwner(userId) || isAdmin();
-        allow create, update: if isOwner(userId);
+        allow delete: if isOwner(userId) || isAdmin() || isEditorMember(userId);
+        allow create, update: if isOwner(userId) || isEditorMember(userId);
       }
     }
 

@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -176,6 +177,35 @@ export function PanelMembersCard() {
     }
   };
 
+  const handlePermissionChange = (member: UserProfile, panelRole: 'viewer' | 'editor') => {
+    if (!firestore) return;
+    // Radix já filtra reseleção, mas o guard evita write/toast redundante por segurança.
+    const current = member.panelRole === 'editor' ? 'editor' : 'viewer';
+    if (current === panelRole) return;
+
+    const memberRef = doc(firestore, 'users', member.id);
+    const memberName = member.displayName || member.email;
+    setDoc(memberRef, { panelRole }, { merge: true })
+      .then(() => {
+        toast({
+          title: 'Permissão atualizada',
+          description:
+            panelRole === 'editor'
+              ? `${memberName} agora pode editar este painel.`
+              : `${memberName} voltou a ter acesso somente leitura.`,
+        });
+      })
+      .catch(() => {
+        const permissionError = new FirestorePermissionError({
+          path: memberRef.path,
+          operation: 'update',
+          requestResourceData: { panelRole },
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({ variant: 'destructive', title: 'Erro ao atualizar permissão', description: 'Não foi possível alterar a permissão. Tente novamente.' });
+      });
+  };
+
   const handleCancelInvite = (invite: PanelInvite) => {
     if (!firestore) return;
     const inviteRef = doc(firestore, 'invites', invite.id);
@@ -194,9 +224,10 @@ export function PanelMembersCard() {
     if (!firestore || !memberToRemove) return;
 
     const memberRef = doc(firestore, 'users', memberToRemove.id);
-    // deleteField + merge: remove só o vínculo; o doc do usuário continua existindo
-    // e ele volta a ver o próprio painel.
-    const updatedData = { panelOwnerId: deleteField() };
+    // deleteField + merge: remove o vínculo E a permissão de editor; o doc do usuário
+    // continua existindo e ele volta a ver o próprio painel. Limpar panelRole aqui é
+    // obrigatório: um 'editor' órfão seria reativado se ele fosse convidado a outro painel.
+    const updatedData = { panelOwnerId: deleteField(), panelRole: deleteField() };
     // Captura o nome antes de fechar o dialog: o toast de sucesso é assíncrono.
     const memberName = memberToRemove.displayName || memberToRemove.email;
 
@@ -208,7 +239,7 @@ export function PanelMembersCard() {
         const permissionError = new FirestorePermissionError({
           path: memberRef.path,
           operation: 'update',
-          requestResourceData: { panelOwnerId: '(deleteField)' },
+          requestResourceData: { panelOwnerId: '(deleteField)', panelRole: '(deleteField)' },
         });
         errorEmitter.emit('permission-error', permissionError);
         toast({ variant: 'destructive', title: 'Erro ao remover membro', description: 'Não foi possível remover o membro. Tente novamente.' });
@@ -222,8 +253,8 @@ export function PanelMembersCard() {
       <CardHeader>
         <CardTitle>Membros de Painel</CardTitle>
         <CardDescription>
-          Cada painel e seus usuários vinculados (somente leitura). O convidado entra
-          com Google ou criando uma senha.
+          Cada painel e seus usuários vinculados. Defina se cada membro só vê (somente
+          leitura) ou pode editar o painel. O convidado entra com Google ou criando uma senha.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -264,15 +295,29 @@ export function PanelMembersCard() {
                           <p className="truncate text-sm">{member.displayName}</p>
                           <p className="truncate text-xs text-muted-foreground">{member.email}</p>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
-                          onClick={() => setMemberToRemove(member)}
-                        >
-                          <span className="sr-only">Remover membro</span>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Select
+                            value={member.panelRole === 'editor' ? 'editor' : 'viewer'}
+                            onValueChange={(value) => handlePermissionChange(member, value as 'viewer' | 'editor')}
+                          >
+                            <SelectTrigger className="h-8 w-[140px]" aria-label="Permissão do membro">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="viewer">Somente leitura</SelectItem>
+                              <SelectItem value="editor">Pode editar</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                            onClick={() => setMemberToRemove(member)}
+                          >
+                            <span className="sr-only">Remover membro</span>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -320,8 +365,9 @@ export function PanelMembersCard() {
           <DialogHeader>
             <DialogTitle>Convidar para &quot;{invitingPanel?.displayName}&quot;</DialogTitle>
             <DialogDescription>
-              O convidado acessa o painel em modo somente leitura. Ao entrar pela primeira
-              vez, ele escolhe entre Google ou criar uma senha.
+              O convidado entra em modo somente leitura; depois você pode promovê-lo a
+              editor na lista. Ao entrar pela primeira vez, ele escolhe entre Google ou
+              criar uma senha.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onInvite)} className="space-y-4">

@@ -59,8 +59,9 @@ export default function TransactionsPage() {
         <div
           className="flex flex-1 rounded-lg border border-dashed shadow-sm p-2 sm:p-4"
         >
-            <TransactionsTable 
-                initialTransactions={allTransactions} 
+            <TransactionsTable
+                targetUserId={targetUserId}
+                initialTransactions={allTransactions}
                 categories={categories}
                 title="Extrato Geral"
                 description="Uma lista de todas as suas receitas e despesas."

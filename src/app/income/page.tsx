@@ -63,6 +63,7 @@ export default function IncomePage() {
             className="flex flex-1 rounded-lg border border-dashed shadow-sm p-2 sm:p-4"
           >
               <TransactionsTable
+                  targetUserId={targetUserId}
                   initialTransactions={incomeTransactions}
                   categories={categories}
                   transactionType="income"

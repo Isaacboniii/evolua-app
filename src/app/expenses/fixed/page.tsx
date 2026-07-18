@@ -63,8 +63,9 @@ export default function FixedExpensesPage() {
           <div
             className="flex flex-1 rounded-lg border border-dashed shadow-sm p-2 sm:p-4"
           >
-              <TransactionsTable 
-                  initialTransactions={fixedExpenseTransactions} 
+              <TransactionsTable
+                  targetUserId={targetUserId}
+                  initialTransactions={fixedExpenseTransactions}
                   categories={categories}
                   transactionType="expense"
                   expenseType="monthly_fixed"

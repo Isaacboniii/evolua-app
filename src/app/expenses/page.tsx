@@ -62,8 +62,9 @@ export default function ExpensesPage() {
           <div
             className="flex flex-1 rounded-lg border border-dashed shadow-sm p-2 sm:p-4"
           >
-              <TransactionsTable 
-                  initialTransactions={expenseTransactions} 
+              <TransactionsTable
+                  targetUserId={targetUserId}
+                  initialTransactions={expenseTransactions}
                   categories={categories}
                   transactionType="expense"
                   title="Todas as Despesas"

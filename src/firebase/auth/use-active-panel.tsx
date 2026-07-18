@@ -6,7 +6,8 @@ import { useUserProfile } from './use-user-profile';
  * Resolve QUAL painel o usuário logado está vendo e se pode escrever nele.
  *
  * Regra única do produto: um membro (perfil com `panelOwnerId`) enxerga o painel
- * do dono em modo somente leitura; qualquer outro usuário vê o próprio painel com
+ * do dono. Se o admin o marcou como `panelRole === 'editor'`, ele pode escrever;
+ * caso contrário é somente leitura. Quem não é membro vê o próprio painel com
  * escrita liberada. Centralizado aqui para não repetir essa decisão em cada rota.
  *
  * `loading` reflete o carregamento do perfil — a UI deve aguardá-lo antes de
@@ -16,11 +17,13 @@ import { useUserProfile } from './use-user-profile';
 export function useActivePanel() {
   const { user, profile, loading } = useUserProfile();
   const panelOwnerId = profile?.panelOwnerId;
+  const isMember = !!panelOwnerId;
 
   return {
     user,
     loading,
     targetUserId: panelOwnerId || user?.uid,
-    isReadOnly: !!panelOwnerId,
+    // Membro só escreve se for editor; dono sempre escreve.
+    isReadOnly: isMember && profile?.panelRole !== 'editor',
   };
 }

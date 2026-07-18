@@ -34,7 +34,7 @@ export function PanelSectionRenderer({
 
   switch (section) {
     case 'financas':
-      return <Dashboard userId={userId} backHref={backHref} />;
+      return <Dashboard userId={userId} isReadOnly={isReadOnly} backHref={backHref} />;
     case 'metas':
       return <GoalsSection userId={userId} isReadOnly={isReadOnly} backHref={backHref} />;
     case 'evolucao':

@@ -63,8 +63,9 @@ export default function VariableExpensesPage() {
           <div
             className="flex flex-1 rounded-lg border border-dashed shadow-sm p-2 sm:p-4"
           >
-              <TransactionsTable 
-                  initialTransactions={variableExpenseTransactions} 
+              <TransactionsTable
+                  targetUserId={targetUserId}
+                  initialTransactions={variableExpenseTransactions}
                   categories={categories}
                   transactionType="expense"
                   title="Despesas Variáveis"
