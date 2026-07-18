@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,9 +9,11 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   type User
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { Eye, EyeOff } from 'lucide-react';
 
 import { useUser, useAuth, useFirestore } from '@/firebase';
 import { Button } from '@/components/ui/button';
@@ -35,6 +37,8 @@ export default function LoginPage() {
   const firestore = useFirestore();
   const auth = useAuth();
   const { toast } = useToast();
+
+  const [showPassword, setShowPassword] = useState(false);
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -78,6 +82,34 @@ export default function LoginPage() {
         });
       }
     }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!auth) return;
+    const email = loginForm.getValues('email');
+    const emailCheck = z.string().email().safeParse(email);
+    if (!emailCheck.success) {
+      toast({
+        variant: 'destructive',
+        title: 'Informe seu email',
+        description: 'Digite seu email no campo acima para receber o link de redefinição.',
+      });
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (error: any) {
+      // user-not-found é engolido de propósito: a mensagem genérica abaixo não revela
+      // se a conta existe (evita enumeração de emails). Outros erros são exibidos.
+      if (error?.code !== 'auth/user-not-found') {
+        toast({ variant: 'destructive', title: 'Erro', description: getAuthErrorMessage(error?.code) });
+        return;
+      }
+    }
+    toast({
+      title: 'Verifique seu email',
+      description: 'Se houver uma conta com esse email, enviamos um link para redefinir a senha.',
+    });
   };
 
   // O vínculo de membro é gravado pelo admin ao convidar; aqui só criamos o perfil
@@ -139,12 +171,32 @@ export default function LoginPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                {...loginForm.register('password')}
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Senha</Label>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  className="pr-10"
+                  {...loginForm.register('password')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               {loginForm.formState.errors.password && (
                 <p className="text-sm text-destructive">{loginForm.formState.errors.password.message}</p>
               )}
