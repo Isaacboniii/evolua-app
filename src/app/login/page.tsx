@@ -12,6 +12,7 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   sendEmailVerification,
+  signOut,
   type User
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -59,13 +60,24 @@ export default function LoginPage() {
     }
   }, [user, loading, router]);
 
+  // Decide a navegação após o sync. Se o convidado (por senha) ainda precisa verificar
+  // o email, desloga e mantém na tela de login — o claim só roda num login com o token
+  // já verificado, então deixá-lo logado no painel próprio vazio seria um beco sem saída.
+  const finishAuth = async (status: 'needs-verification' | void) => {
+    if (status === 'needs-verification') {
+      if (auth) await signOut(auth).catch((e) => console.error('signOut error:', e));
+      isManualAuth.current = false;
+      return;
+    }
+    router.push('/redirect');
+  };
+
   const handleSignIn = async (data: LoginFormData) => {
     if (!auth) return;
     isManualAuth.current = true;
     try {
       const result = await signInWithEmailAndPassword(auth, data.email, data.password);
-      await syncUserProfile(result.user).catch((e) => console.error('Sync error:', e));
-      router.push('/redirect');
+      await finishAuth(await syncUserProfile(result.user));
     } catch (error: any) {
       isManualAuth.current = false;
       toast({ variant: 'destructive', title: 'Erro de autenticação', description: getAuthErrorMessage(error.code) });
@@ -74,11 +86,14 @@ export default function LoginPage() {
 
   const handleSignUp = async (data: LoginFormData) => {
     if (!auth) return;
+    if (data.password.length < 6) {
+      loginForm.setError('password', { message: 'A senha deve ter no mínimo 6 caracteres.' });
+      return;
+    }
     isManualAuth.current = true;
     try {
       const result = await createUserWithEmailAndPassword(auth, data.email, data.password);
-      await syncUserProfile(result.user).catch((e) => console.error('Sync error:', e));
-      router.push('/redirect');
+      await finishAuth(await syncUserProfile(result.user));
     } catch (error: any) {
       isManualAuth.current = false;
       toast({ variant: 'destructive', title: 'Erro ao criar conta', description: getAuthErrorMessage(error.code) });
@@ -91,8 +106,7 @@ export default function LoginPage() {
     isManualAuth.current = true;
     try {
       const result = await signInWithPopup(auth, provider);
-      await syncUserProfile(result.user).catch((e) => console.error('Sync error:', e));
-      router.push('/redirect');
+      await finishAuth(await syncUserProfile(result.user));
     } catch (error: any) {
       isManualAuth.current = false;
       if (error.code !== 'auth/popup-closed-by-user') {
@@ -132,7 +146,9 @@ export default function LoginPage() {
   // Reivindica um convite pendente (invites/{email}) no primeiro login, seja por
   // Google (email já verificado) ou por senha (após o convidado confirmar o email).
   // Sem convite, apenas cria o perfil padrão de quem entra pela primeira vez.
-  const syncUserProfile = async (firebaseUser: User) => {
+  // Retorna 'needs-verification' quando há convite mas o email ainda não foi
+  // confirmado — o chamador desloga e mantém no login para o claim rodar depois.
+  const syncUserProfile = async (firebaseUser: User): Promise<'needs-verification' | void> => {
     if (!firestore || !firebaseUser) return;
     const userRef = doc(firestore, 'users', firebaseUser.uid);
     const email = firebaseUser.email?.toLowerCase() ?? null;
@@ -143,14 +159,17 @@ export default function LoginPage() {
 
       if (inviteSnap?.exists() && !firebaseUser.emailVerified) {
         // As rules exigem email verificado para o claim (evita sequestro de convite
-        // por conta de senha não confirmada). Envia a verificação; o claim ocorre no
-        // próximo login. O perfil padrão (sem panelOwnerId) é criado abaixo.
+        // por conta de senha não confirmada). Envia a verificação e sinaliza que o
+        // chamador deve deslogar — o claim ocorre no próximo login, já verificado.
         sendEmailVerification(firebaseUser).catch((e) => console.error('Verification email error:', e));
         toast({
           title: 'Confirme seu email',
-          description: 'Você foi convidado para um painel. Verifique seu email e entre novamente para ativar o acesso.',
+          description: 'Você foi convidado para um painel. Confirme seu email e entre novamente para ativar o acesso.',
         });
-      } else if (inviteSnap?.exists()) {
+        return 'needs-verification';
+      }
+
+      if (inviteSnap?.exists()) {
         const { panelOwnerId } = inviteSnap.data();
         const profilePayload = docSnap.exists()
           ? { panelOwnerId }
@@ -161,26 +180,33 @@ export default function LoginPage() {
               role: 'user',
               panelOwnerId,
             };
-        // Ordem obrigatória: grava panelOwnerId (as rules validam contra o convite
-        // existente) e só então apaga o convite.
         try {
+          // Grava o vínculo (as rules validam contra o convite existente).
           await setDoc(userRef, profilePayload, { merge: true });
-          await deleteDoc(inviteSnap.ref);
+          // Limpa o convite em fire-and-forget: se falhar, o convite órfão é
+          // reivindicado/apagado no próximo login (idempotente). O importante — o
+          // vínculo — já foi gravado, então retornamos de qualquer forma.
+          deleteDoc(inviteSnap.ref).catch((e) => console.error('Cleanup do convite falhou:', e));
           return;
         } catch (claimError) {
-          // Claim falho (ex: convite cancelado entre a leitura e a escrita) não pode
-          // impedir a criação do perfil padrão abaixo — o login segue normal.
+          // Só chega aqui se o próprio vínculo falhou (ex: convite cancelado no meio).
+          // O login segue normal e cai no perfil padrão abaixo.
           console.error('Claim error:', claimError);
         }
       }
 
       if (!docSnap.exists()) {
-        await setDoc(userRef, {
-          displayName: fallbackName,
-          email: firebaseUser.email,
-          photoURL: firebaseUser.photoURL || '',
-          role: 'user',
-        });
+        // merge para nunca sobrescrever um doc que porventura já exista.
+        await setDoc(
+          userRef,
+          {
+            displayName: fallbackName,
+            email: firebaseUser.email,
+            photoURL: firebaseUser.photoURL || '',
+            role: 'user',
+          },
+          { merge: true }
+        );
       }
     } catch (error) {
       console.error('Error syncing user profile:', error);
