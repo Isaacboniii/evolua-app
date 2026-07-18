@@ -7,15 +7,15 @@ import { z } from 'zod';
 import {
   collection,
   doc,
-  getDoc,
   getDocs,
   limit,
   query,
   setDoc,
-  deleteDoc,
   deleteField,
   where,
 } from 'firebase/firestore';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,12 +38,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { useCollection, useFirestore, useUser } from '@/firebase';
+import { useCollection, useFirestore, useUser, useAuth } from '@/firebase';
 import { useMemoCollection, useMemoQuery } from '@/hooks/use-firebase-memo';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import type { PanelInvite, UserProfile } from '@/lib/types';
-import { Trash2, X } from 'lucide-react';
+import { firebaseConfig } from '@/firebase/config';
+import { getAuthErrorMessage } from '@/lib/utils';
+import type { UserProfile } from '@/lib/types';
+import { Trash2 } from 'lucide-react';
 
 const inviteSchema = z.object({
   email: z.string().email({ message: 'Por favor, insira um email válido.' }),
@@ -51,19 +53,27 @@ const inviteSchema = z.object({
 
 type InviteFormData = z.infer<typeof inviteSchema>;
 
+// Senha aleatória forte só para criar a conta. O convidado nunca a usa: define a
+// própria pelo email de redefinição. O sufixo garante os requisitos de complexidade.
+function generateTempPassword() {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('') + 'Aa1!';
+}
+
 export function PanelMembersCard() {
   const firestore = useFirestore();
+  const auth = useAuth();
   const { user: adminUser } = useUser();
   const { toast } = useToast();
 
   const [selectedPanelId, setSelectedPanelId] = useState<string>('');
   const [memberToRemove, setMemberToRemove] = useState<UserProfile | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const usersRef = useMemoCollection(firestore, 'users');
   const { data: users, loading: usersLoading } = useCollection<UserProfile>(usersRef);
 
-  // Membros não são painéis: quem tem panelOwnerId enxerga o painel de outra pessoa,
-  // então não pode receber membros próprios.
+  // Membros não são painéis: quem tem panelOwnerId enxerga o painel de outra pessoa.
   const panels = useMemo(
     () => (users ?? []).filter((u) => u.role !== 'admin' && !u.panelOwnerId),
     [users]
@@ -77,13 +87,6 @@ export function PanelMembersCard() {
   );
   const { data: members } = useCollection<UserProfile>(membersQuery);
 
-  const invitesQuery = useMemoQuery(
-    firestore,
-    selectedPanelId ? 'invites' : null,
-    selectedPanelId ? where('panelOwnerId', '==', selectedPanelId) : null
-  );
-  const { data: invites } = useCollection<PanelInvite>(invitesQuery);
-
   const form = useForm<InviteFormData>({
     resolver: zodResolver(inviteSchema),
     defaultValues: { email: '' },
@@ -95,196 +98,114 @@ export function PanelMembersCard() {
   };
 
   const onInvite = async (data: InviteFormData) => {
-    if (!firestore || !selectedPanel || !adminUser) return;
+    if (!firestore || !auth || !selectedPanel || !adminUser) return;
 
-    // ID do doc de convite = email em minúsculas: as rules validam o claim
-    // contra invites/{request.auth.token.email.lower()}.
     const email = data.email.toLowerCase().trim();
 
     if (email === selectedPanel.email?.toLowerCase()) {
-      toast({
-        variant: 'destructive',
-        title: 'Email inválido',
-        description: 'Este email já é o dono do painel.',
-      });
+      toast({ variant: 'destructive', title: 'Email inválido', description: 'Este email já é o dono do painel.' });
       return;
     }
-
     if (members?.some((m) => m.email?.toLowerCase() === email)) {
-      toast({
-        variant: 'destructive',
-        title: 'Usuário já é membro',
-        description: 'Este email já tem acesso a este painel.',
-      });
+      toast({ variant: 'destructive', title: 'Usuário já é membro', description: 'Este email já tem acesso a este painel.' });
       return;
     }
 
-    if (invites?.some((i) => i.id === email)) {
-      toast({
-        variant: 'destructive',
-        title: 'Convite já enviado',
-        description: 'Já existe um convite pendente para este email.',
-      });
-      return;
-    }
-
-    // Usuário já registrado sem vínculo: bloqueia admin sempre, e dono de painel
-    // só se o painel tem DADOS — o claim esconderia essas transações/metas.
-    // Perfil vazio (alguém que só logou uma vez) pode virar membro sem perda.
-    const existingUser = users?.find(
-      (u) => u.id !== selectedPanel.id && u.email?.toLowerCase() === email && !u.panelOwnerId
-    );
+    const existingUser = users?.find((u) => u.email?.toLowerCase() === email);
     if (existingUser?.role === 'admin') {
-      toast({
-        variant: 'destructive',
-        title: 'Email de administrador',
-        description: 'Administradores não podem ser convidados como membros de painel.',
-      });
+      toast({ variant: 'destructive', title: 'Email de administrador', description: 'Administradores não podem ser convidados como membros.' });
       return;
     }
-    if (existingUser) {
-      try {
+    if (existingUser?.panelOwnerId && existingUser.panelOwnerId !== selectedPanel.id) {
+      toast({ variant: 'destructive', title: 'Email já é membro de outro painel', description: 'Remova este usuário do painel atual antes de convidá-lo para este.' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (existingUser) {
+        // Já tem conta e perfil. Se tem dados no próprio painel, vincular os esconderia
+        // — bloqueia. Perfil vazio (quem só logou uma vez) pode virar membro sem perda.
         const [txSnap, goalsSnap] = await Promise.all([
           getDocs(query(collection(firestore, `users/${existingUser.id}/transactions`), limit(1))),
           getDocs(query(collection(firestore, `users/${existingUser.id}/goals`), limit(1))),
         ]);
         if (!txSnap.empty || !goalsSnap.empty) {
-          toast({
-            variant: 'destructive',
-            title: 'Email possui painel próprio',
-            description:
-              'Este email pertence a um usuário com dados no próprio painel e não pode ser convidado como membro.',
-          });
+          toast({ variant: 'destructive', title: 'Email possui painel próprio', description: 'Este email pertence a um usuário com dados no próprio painel e não pode ser convidado.' });
           return;
         }
-      } catch {
-        // Falha fechada: sem conseguir validar, não cria o convite.
-        toast({
-          variant: 'destructive',
-          title: 'Não foi possível validar o email',
-          description: 'Verifique sua conexão e tente novamente.',
-        });
-        return;
+        const userRef = doc(firestore, 'users', existingUser.id);
+        await setDoc(userRef, { panelOwnerId: selectedPanel.id }, { merge: true });
+        toast({ title: 'Membro vinculado!', description: `${email} já tinha conta e agora acessa o painel "${selectedPanel.displayName}".` });
+      } else {
+        // Sem conta: cria numa instância secundária do Firebase (para não deslogar o
+        // admin) e dispara o email de definição de senha. O membro nasce já vinculado.
+        const secondaryApp = initializeApp(firebaseConfig, `secondary-auth-${Date.now()}`);
+        let createdUser = null;
+        try {
+          const secondaryAuth = getAuth(secondaryApp);
+          const cred = await createUserWithEmailAndPassword(secondaryAuth, email, generateTempPassword());
+          createdUser = cred.user;
+          const userRef = doc(firestore, 'users', createdUser.uid);
+          await setDoc(userRef, {
+            displayName: email.split('@')[0],
+            email,
+            photoURL: '',
+            role: 'user',
+            panelOwnerId: selectedPanel.id,
+          });
+          await sendPasswordResetEmail(auth, email);
+          toast({ title: 'Convite enviado!', description: `Enviamos um email para ${email} definir a senha e acessar o painel.` });
+        } catch (innerError) {
+          // Falha após criar a conta (setDoc/reset): reverte a conta recém-criada para
+          // não deixar órfã no Auth — senha aleatória que ninguém conhece e sem doc em
+          // users. Sem isso, reconvidar cairia em email-already-in-use sem saída.
+          if (createdUser) {
+            await createdUser.delete().catch((e) => console.error('Falha ao reverter conta órfã:', e));
+          }
+          throw innerError;
+        } finally {
+          await deleteApp(secondaryApp);
+        }
       }
+      form.reset({ email: '' });
+    } catch (error: any) {
+      if (error?.code === 'auth/email-already-in-use') {
+        // Conta existe no Auth mas sem doc em users (nunca logou no app) — não temos
+        // o uid para vincular. Peça um login para o perfil ser criado, então reconvide.
+        toast({ variant: 'destructive', title: 'Email já cadastrado', description: 'Este email já tem conta mas ainda não acessou o app. Peça para a pessoa fazer login uma vez e convide novamente.' });
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao convidar', description: getAuthErrorMessage(error?.code) });
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Membro de OUTRO painel: o claim transferiria o acesso silenciosamente.
-    // Exige remoção explícita do painel atual antes de convidar de novo.
-    const memberElsewhere = users?.find(
-      (u) => u.email?.toLowerCase() === email && u.panelOwnerId && u.panelOwnerId !== selectedPanel.id
-    );
-    if (memberElsewhere) {
-      toast({
-        variant: 'destructive',
-        title: 'Email já é membro de outro painel',
-        description: 'Remova este usuário do painel atual antes de convidá-lo para este.',
-      });
-      return;
-    }
-
-    const inviteRef = doc(firestore, 'invites', email);
-
-    // O ID do convite é GLOBAL por email — a lista reativa acima só cobre o painel
-    // selecionado. Sem esta checagem, convidar o mesmo email para outro painel
-    // sobrescreveria o convite anterior em silêncio. Falha fechada: erro de
-    // leitura aborta em vez de arriscar a sobrescrita que a checagem evita.
-    let existingInvite;
-    try {
-      existingInvite = await getDoc(inviteRef);
-    } catch {
-      toast({
-        variant: 'destructive',
-        title: 'Não foi possível validar o convite',
-        description: 'Verifique sua conexão e tente novamente.',
-      });
-      return;
-    }
-    if (existingInvite.exists() && existingInvite.data().panelOwnerId !== selectedPanel.id) {
-      const otherPanel = existingInvite.data().panelName;
-      toast({
-        variant: 'destructive',
-        title: 'Convite pendente para outro painel',
-        description: `${email} já foi convidado para o painel "${otherPanel ?? 'outro'}". Cancele o convite anterior antes de criar um novo.`,
-      });
-      return;
-    }
-    const inviteData = {
-      panelOwnerId: selectedPanel.id,
-      panelName: selectedPanel.displayName,
-      invitedBy: adminUser.uid,
-      createdAt: new Date().toISOString(),
-    };
-
-    setDoc(inviteRef, inviteData).catch((serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: inviteRef.path,
-        operation: 'create',
-        requestResourceData: inviteData,
-      });
-      errorEmitter.emit('permission-error', permissionError);
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao convidar',
-        description: 'Não foi possível criar o convite. Tente novamente.',
-      });
-    });
-
-    toast({
-      title: 'Convite criado!',
-      description: `${email} terá acesso ao painel "${selectedPanel.displayName}" no próximo login.`,
-    });
-    form.reset({ email: '' });
-  };
-
-  const handleCancelInvite = (invite: PanelInvite) => {
-    if (!firestore) return;
-
-    const inviteRef = doc(firestore, 'invites', invite.id);
-    deleteDoc(inviteRef).catch((serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: inviteRef.path,
-        operation: 'delete',
-      });
-      errorEmitter.emit('permission-error', permissionError);
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao cancelar convite',
-        description: 'Não foi possível remover o convite. Tente novamente.',
-      });
-    });
-
-    toast({
-      title: 'Convite cancelado',
-      description: `O convite para ${invite.id} foi removido.`,
-    });
   };
 
   const handleRemoveConfirm = () => {
     if (!firestore || !memberToRemove) return;
 
     const memberRef = doc(firestore, 'users', memberToRemove.id);
-    // deleteField + merge: remove só o claim; o doc do usuário continua
-    // existindo e ele volta a ver o próprio painel.
+    // deleteField + merge: remove só o vínculo; o doc do usuário continua existindo
+    // e ele volta a ver o próprio painel.
     const updatedData = { panelOwnerId: deleteField() };
+    // Captura o nome antes de fechar o dialog: o toast de sucesso é assíncrono.
+    const memberName = memberToRemove.displayName || memberToRemove.email;
 
-    setDoc(memberRef, updatedData, { merge: true }).catch((serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: memberRef.path,
-        operation: 'update',
-        requestResourceData: { panelOwnerId: '(deleteField)' },
+    setDoc(memberRef, updatedData, { merge: true })
+      .then(() => {
+        toast({ title: 'Membro removido', description: `${memberName} não tem mais acesso a este painel.` });
+      })
+      .catch((serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: memberRef.path,
+          operation: 'update',
+          requestResourceData: { panelOwnerId: '(deleteField)' },
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({ variant: 'destructive', title: 'Erro ao remover membro', description: 'Não foi possível remover o membro. Tente novamente.' });
       });
-      errorEmitter.emit('permission-error', permissionError);
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao remover membro',
-        description: 'Não foi possível remover o membro. Tente novamente.',
-      });
-    });
 
-    toast({
-      title: 'Membro removido',
-      description: `${memberToRemove.displayName || memberToRemove.email} não tem mais acesso a este painel.`,
-    });
     setMemberToRemove(null);
   };
 
@@ -293,7 +214,8 @@ export function PanelMembersCard() {
       <CardHeader>
         <CardTitle>Membros de Painel</CardTitle>
         <CardDescription>
-          Convide usuários para visualizar um painel em modo somente leitura.
+          Convide usuários para visualizar um painel em modo somente leitura. Eles recebem
+          um email para definir a senha e acessar.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -345,33 +267,6 @@ export function PanelMembersCard() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">Convites pendentes</h3>
-              {invites && invites.length > 0 ? (
-                <ul className="space-y-2">
-                  {invites.map((invite) => (
-                    <li
-                      key={invite.id}
-                      className="flex items-center justify-between gap-2 rounded-md border p-3"
-                    >
-                      <p className="min-w-0 truncate text-sm text-muted-foreground">{invite.id}</p>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0"
-                        onClick={() => handleCancelInvite(invite)}
-                      >
-                        <span className="sr-only">Cancelar convite</span>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">Nenhum convite pendente.</p>
-              )}
-            </div>
-
             <form onSubmit={form.handleSubmit(onInvite)} className="space-y-2">
               <Label htmlFor="invite-email">Convidar por email</Label>
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -379,10 +274,11 @@ export function PanelMembersCard() {
                   id="invite-email"
                   type="email"
                   placeholder="convidado@email.com"
+                  disabled={isSubmitting}
                   {...form.register('email')}
                 />
-                <Button type="submit" className="shrink-0">
-                  Convidar
+                <Button type="submit" className="shrink-0" disabled={isSubmitting}>
+                  {isSubmitting ? 'Convidando...' : 'Convidar'}
                 </Button>
               </div>
               {form.formState.errors.email && (
