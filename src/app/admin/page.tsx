@@ -54,8 +54,14 @@ export default function AdminPage() {
 
     const handleDeleteConfirm = () => {
         if (!firestore || !deletingUserId) return;
-        
+
         const docRef = doc(firestore, 'users', deletingUserId);
+
+        // Fecha o diálogo ANTES do deleteDoc. Se ele continuar aberto quando a lista
+        // re-renderizar (o card some), o Radix pode não restaurar o pointer-events do
+        // body e a página trava. docRef já foi capturado, então pode zerar o estado.
+        setIsDeleteDialogOpen(false);
+        setDeletingUserId(null);
 
         deleteDoc(docRef)
             .then(() => {
@@ -76,10 +82,6 @@ export default function AdminPage() {
                     title: "Erro ao excluir painel",
                     description: "Não foi possível remover o painel. Verifique as permissões.",
                 });
-            })
-            .finally(() => {
-                 setIsDeleteDialogOpen(false);
-                 setDeletingUserId(null);
             });
     };
 
@@ -118,7 +120,10 @@ export default function AdminPage() {
                                         </Card>
                                     </Link>
                                     <div className="absolute top-2 right-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-                                        <DropdownMenu>
+                                        {/* modal={false}: o menu NÃO trava o body. Sem isso, ao excluir
+                                            o card desmonta com o menu no meio da limpeza e o pointer-events:none
+                                            fica preso no <body> — a página inteira trava até dar refresh. */}
+                                        <DropdownMenu modal={false}>
                                             <DropdownMenuTrigger asChild>
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 p-0" onClick={(e) => e.preventDefault()}>
                                                     <span className="sr-only">Abrir menu</span>
