@@ -32,31 +32,41 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('panelOwnerId', '') == userId;
     }
 
-    // Impede que o usuário comum se vincule/troque de painel sozinho num update.
-    // Só o admin grava panelOwnerId (ao convidar um membro). get() com default ''
-    // cobre docs que nunca tiveram o campo.
+    // O claim de panelOwnerId só é válido se existir um convite pendente para o
+    // email do usuário E o painel do convite bater com o que ele quer gravar.
+    // email_verified é obrigatório: sem isso, alguém poderia registrar o email
+    // convidado (sem confirmar a caixa postal) e capturar o acesso ao painel.
+    // Login Google já vem verificado; conta de senha precisa confirmar o email
+    // antes do claim valer. Token sem email falha na avaliação e nega (fail closed).
+    function claimMatchesInvite() {
+      return request.auth.token.email_verified == true &&
+             exists(/databases/$(database)/documents/invites/$(request.auth.token.email.lower())) &&
+             get(/databases/$(database)/documents/invites/$(request.auth.token.email.lower())).data.panelOwnerId == request.resource.data.panelOwnerId;
+    }
+
+    // Impede que o usuário comum troque de painel sozinho num update. As exceções
+    // são o admin (vincular direto) e o claim (primeiro login com convite válido).
     function panelOwnerUnchanged() {
       return request.resource.data.get('panelOwnerId', '') == resource.data.get('panelOwnerId', '');
     }
 
     match /users/{userId} {
-      // Membro lê o doc do dono para resolver nome/dados do painel compartilhado.
+      // Membro lê o doc do dono para resolver o painel compartilhado.
       allow get: if isOwner(userId) || isAdmin() || isMember(userId);
       allow list: if isAdmin();
 
-      // Perfil sempre nasce como 'user'. O admin cria painéis e vincula membros;
-      // o cliente cria o próprio perfil no primeiro login (Google/email) e NÃO pode
-      // se auto-vincular a um painel — panelOwnerId só entra por escrita do admin.
+      // Perfil nasce como 'user'. O cliente cria o próprio no primeiro login e só
+      // pode incluir panelOwnerId se houver um convite válido para o email (claim).
       allow create: if isAdmin() ||
                        (isOwner(userId) && request.resource.data.role == 'user' &&
-                        !('panelOwnerId' in request.resource.data));
+                        (!('panelOwnerId' in request.resource.data) || claimMatchesInvite()));
 
-      // O dono edita o próprio perfil, mas NÃO pode mexer no próprio `role` nem
-      // se vincular a um painel. Só o admin altera papéis e vincula membros.
+      // O dono edita o próprio perfil, mas NÃO muda o próprio `role` nem se vincula
+      // a um painel sem convite. Admin e claim são as exceções para panelOwnerId.
       allow update: if isAdmin() ||
-                       (isOwner(userId) && roleUnchanged() && panelOwnerUnchanged());
+                       (isOwner(userId) && roleUnchanged() &&
+                        (panelOwnerUnchanged() || claimMatchesInvite()));
 
-      // Excluir um painel é ação administrativa.
       allow delete: if isAdmin();
 
       // Membro só LÊ o painel do dono; escrita e exclusão seguem restritas.
@@ -71,6 +81,22 @@ service cloud.firestore {
         allow delete: if isOwner(userId) || isAdmin();
         allow create, update: if isOwner(userId);
       }
+    }
+
+    // Convite pendente: o ID do doc é o email do convidado em minúsculas. O admin
+    // cria/cancela; o convidado lê e deleta o PRÓPRIO convite ao reivindicá-lo no
+    // login (grava panelOwnerId ANTES de deletar — claimMatchesInvite valida contra
+    // o convite ainda existente). Serve tanto para login Google quanto por senha.
+    match /invites/{inviteEmail} {
+      // get sem email_verified de propósito: o app precisa detectar o convite no
+      // login para pedir a verificação. Só vaza a existência do convite e o painel.
+      allow get: if isAdmin() ||
+                    (isSignedIn() && request.auth.token.email.lower() == inviteEmail);
+      allow list: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin() ||
+                       (isSignedIn() && request.auth.token.email_verified == true &&
+                        request.auth.token.email.lower() == inviteEmail);
     }
 
     match /categories/{categoryId} {

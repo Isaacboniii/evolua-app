@@ -7,8 +7,18 @@ export type UserProfile = {
   role: 'admin' | 'user';
   // uid do dono do painel do qual este usuário é membro (somente leitura).
   // Presença do campo => o app resolve o painel do dono em vez do próprio.
-  // Gravado apenas pelo admin ao convidar; usuário comum não pode se auto-vincular.
+  // Gravado pelo admin (vínculo direto) ou pelo claim no primeiro login (convite).
   panelOwnerId?: string;
+};
+
+// Convite pendente. O ID do doc é o email do convidado em minúsculas. É reivindicado
+// no primeiro login (Google ou senha) e então apagado.
+export type PanelInvite = {
+  id: string;
+  panelOwnerId: string;
+  panelName?: string;
+  invitedBy?: string;
+  createdAt?: string;
 };
 
 export type Transaction = {

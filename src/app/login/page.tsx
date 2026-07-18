@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,10 +9,12 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
   type User
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { Eye, EyeOff } from 'lucide-react';
 
 import { useUser, useAuth, useFirestore } from '@/firebase';
@@ -39,6 +41,12 @@ export default function LoginPage() {
   const { toast } = useToast();
 
   const [showPassword, setShowPassword] = useState(false);
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+
+  // Durante um login/cadastro manual quem navega é o handler (após o claim concluir).
+  // Sem esta flag, o onAuthStateChanged popularia `user` e o effect empurraria para
+  // /redirect ANTES de o claim de convite terminar — o membro veria o painel próprio.
+  const isManualAuth = useRef(false);
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -46,40 +54,49 @@ export default function LoginPage() {
   });
 
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && !isManualAuth.current) {
       router.push('/redirect');
     }
   }, [user, loading, router]);
 
   const handleSignIn = async (data: LoginFormData) => {
     if (!auth) return;
+    isManualAuth.current = true;
     try {
       const result = await signInWithEmailAndPassword(auth, data.email, data.password);
-      syncUserProfile(result.user).catch((e) => console.error("Sync error:", e));
+      await syncUserProfile(result.user).catch((e) => console.error('Sync error:', e));
       router.push('/redirect');
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Erro de autenticação",
-        description: getAuthErrorMessage(error.code),
-      });
+      isManualAuth.current = false;
+      toast({ variant: 'destructive', title: 'Erro de autenticação', description: getAuthErrorMessage(error.code) });
+    }
+  };
+
+  const handleSignUp = async (data: LoginFormData) => {
+    if (!auth) return;
+    isManualAuth.current = true;
+    try {
+      const result = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      await syncUserProfile(result.user).catch((e) => console.error('Sync error:', e));
+      router.push('/redirect');
+    } catch (error: any) {
+      isManualAuth.current = false;
+      toast({ variant: 'destructive', title: 'Erro ao criar conta', description: getAuthErrorMessage(error.code) });
     }
   };
 
   const handleGoogleSignIn = async () => {
     if (!auth) return;
     const provider = new GoogleAuthProvider();
+    isManualAuth.current = true;
     try {
       const result = await signInWithPopup(auth, provider);
-      syncUserProfile(result.user).catch((e) => console.error("Sync error:", e));
+      await syncUserProfile(result.user).catch((e) => console.error('Sync error:', e));
       router.push('/redirect');
     } catch (error: any) {
+      isManualAuth.current = false;
       if (error.code !== 'auth/popup-closed-by-user') {
-        toast({
-          variant: "destructive",
-          title: "Erro com Login Google",
-          description: getAuthErrorMessage(error.code),
-        });
+        toast({ variant: 'destructive', title: 'Erro com Login Google', description: getAuthErrorMessage(error.code) });
       }
     }
   };
@@ -112,24 +129,61 @@ export default function LoginPage() {
     });
   };
 
-  // O vínculo de membro é gravado pelo admin ao convidar; aqui só criamos o perfil
-  // padrão no primeiro login de quem ainda não tem doc (o dono do próprio painel).
+  // Reivindica um convite pendente (invites/{email}) no primeiro login, seja por
+  // Google (email já verificado) ou por senha (após o convidado confirmar o email).
+  // Sem convite, apenas cria o perfil padrão de quem entra pela primeira vez.
   const syncUserProfile = async (firebaseUser: User) => {
     if (!firestore || !firebaseUser) return;
     const userRef = doc(firestore, 'users', firebaseUser.uid);
+    const email = firebaseUser.email?.toLowerCase() ?? null;
+    const fallbackName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Novo Usuário';
     try {
       const docSnap = await getDoc(userRef);
+      const inviteSnap = email ? await getDoc(doc(firestore, 'invites', email)) : null;
+
+      if (inviteSnap?.exists() && !firebaseUser.emailVerified) {
+        // As rules exigem email verificado para o claim (evita sequestro de convite
+        // por conta de senha não confirmada). Envia a verificação; o claim ocorre no
+        // próximo login. O perfil padrão (sem panelOwnerId) é criado abaixo.
+        sendEmailVerification(firebaseUser).catch((e) => console.error('Verification email error:', e));
+        toast({
+          title: 'Confirme seu email',
+          description: 'Você foi convidado para um painel. Verifique seu email e entre novamente para ativar o acesso.',
+        });
+      } else if (inviteSnap?.exists()) {
+        const { panelOwnerId } = inviteSnap.data();
+        const profilePayload = docSnap.exists()
+          ? { panelOwnerId }
+          : {
+              displayName: fallbackName,
+              email: firebaseUser.email,
+              photoURL: firebaseUser.photoURL || '',
+              role: 'user',
+              panelOwnerId,
+            };
+        // Ordem obrigatória: grava panelOwnerId (as rules validam contra o convite
+        // existente) e só então apaga o convite.
+        try {
+          await setDoc(userRef, profilePayload, { merge: true });
+          await deleteDoc(inviteSnap.ref);
+          return;
+        } catch (claimError) {
+          // Claim falho (ex: convite cancelado entre a leitura e a escrita) não pode
+          // impedir a criação do perfil padrão abaixo — o login segue normal.
+          console.error('Claim error:', claimError);
+        }
+      }
+
       if (!docSnap.exists()) {
-        const newUserProfile = {
-          displayName: firebaseUser.displayName || 'Novo Usuário',
+        await setDoc(userRef, {
+          displayName: fallbackName,
           email: firebaseUser.email,
           photoURL: firebaseUser.photoURL || '',
           role: 'user',
-        };
-        await setDoc(userRef, newUserProfile);
+        });
       }
     } catch (error) {
-      console.error("Error syncing user profile:", error);
+      console.error('Error syncing user profile:', error);
     }
   };
 
@@ -146,6 +200,8 @@ export default function LoginPage() {
 
   if (user) return null;
 
+  const isSignup = mode === 'signup';
+
   return (
     <main className="relative flex min-h-screen w-full flex-col items-center justify-center bg-background p-4 md:p-8">
       <Card className="w-full max-w-sm">
@@ -153,11 +209,18 @@ export default function LoginPage() {
           <div className="mx-auto mb-2 flex items-center justify-center">
             <Icons.logo className="h-8 w-8 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Bem-vindo ao EvoluaConsults</CardTitle>
-          <CardDescription>Faça login para acessar o painel.</CardDescription>
+          <CardTitle className="text-2xl">
+            {isSignup ? 'Criar conta' : 'Bem-vindo ao EvoluaConsults'}
+          </CardTitle>
+          <CardDescription>
+            {isSignup ? 'Crie sua conta para acessar o painel.' : 'Faça login para acessar o painel.'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <form onSubmit={loginForm.handleSubmit(handleSignIn)} className="space-y-4">
+          <form
+            onSubmit={loginForm.handleSubmit(isSignup ? handleSignUp : handleSignIn)}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -173,13 +236,15 @@ export default function LoginPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Senha</Label>
-                <button
-                  type="button"
-                  onClick={handleForgotPassword}
-                  className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
-                >
-                  Esqueci minha senha
-                </button>
+                {!isSignup && (
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    className="text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+                  >
+                    Esqueci minha senha
+                  </button>
+                )}
               </div>
               <div className="relative">
                 <Input
@@ -197,6 +262,9 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {isSignup && (
+                <p className="text-xs text-muted-foreground">Mínimo de 6 caracteres.</p>
+              )}
               {loginForm.formState.errors.password && (
                 <p className="text-sm text-destructive">{loginForm.formState.errors.password.message}</p>
               )}
@@ -204,11 +272,33 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loginForm.formState.isSubmitting}>
               {loginForm.formState.isSubmitting ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+              ) : isSignup ? (
+                'Criar conta'
               ) : (
                 'Entrar'
               )}
             </Button>
           </form>
+
+          <div className="text-center text-sm">
+            {isSignup ? (
+              <button
+                type="button"
+                onClick={() => setMode('signin')}
+                className="text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+              >
+                Já tem conta? Entrar
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setMode('signup')}
+                className="text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+              >
+                Não tem conta? Criar conta
+              </button>
+            )}
+          </div>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -221,7 +311,7 @@ export default function LoginPage() {
 
           <Button variant="outline" className="w-full" onClick={handleGoogleSignIn}>
             <Icons.google className="mr-2 h-4 w-4" />
-            Entrar com Google
+            {isSignup ? 'Criar conta com Google' : 'Entrar com Google'}
           </Button>
         </CardContent>
       </Card>
