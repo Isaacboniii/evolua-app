@@ -78,14 +78,16 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin() || isMember(userId);
       allow list: if isAdmin();
 
-      // Perfil nasce como 'user'. O cliente cria o próprio no primeiro login e só
-      // pode incluir panelOwnerId se houver um convite válido para o email (claim).
-      // panelRole no self-create só pode nascer viewer/ausente: editor é privilégio
-      // que só o admin concede, senão o claim viraria autopromoção.
+      // Plataforma FECHADA: não há autorregistro. Um perfil só nasce (a) pelo admin
+      // (cria cliente/dono no /admin) ou (b) por um convite válido — o convidado só
+      // pode criar o PRÓPRIO doc reivindicando um invite (claim), sempre com
+      // panelOwnerId + email verificado. Sem convite e sem admin, nenhum doc é criado,
+      // então um login avulso (Google ou senha) não vira usuário do sistema.
+      // panelRole no self-create nasce viewer (editor é privilégio só do admin).
       allow create: if isAdmin() ||
                        (isOwner(userId) && request.resource.data.role == 'user' &&
                         newPanelRoleIsViewer() &&
-                        (!('panelOwnerId' in request.resource.data) || claimMatchesInvite()));
+                        ('panelOwnerId' in request.resource.data) && claimMatchesInvite());
 
       // Não-admin só edita o próprio perfil em dois modos:
       //  A) mesmo painel: role E panelRole imutáveis (não se autopromove a editor);

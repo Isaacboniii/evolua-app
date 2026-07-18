@@ -60,11 +60,11 @@ export default function LoginPage() {
     }
   }, [user, loading, router]);
 
-  // Decide a navegação após o sync. Se o convidado (por senha) ainda precisa verificar
-  // o email, desloga e mantém na tela de login — o claim só roda num login com o token
-  // já verificado, então deixá-lo logado no painel próprio vazio seria um beco sem saída.
-  const finishAuth = async (status: 'needs-verification' | void) => {
-    if (status === 'needs-verification') {
+  // Decide a navegação após o sync. Qualquer status de bloqueio (email ainda não
+  // confirmado, ou email sem acesso à plataforma fechada) desloga e mantém na tela de
+  // login — não navega. Só um sync limpo (void) segue para /redirect.
+  const finishAuth = async (status: 'needs-verification' | 'unauthorized' | void) => {
+    if (status) {
       if (auth) await signOut(auth).catch((e) => console.error('signOut error:', e));
       isManualAuth.current = false;
       return;
@@ -145,10 +145,11 @@ export default function LoginPage() {
 
   // Reivindica um convite pendente (invites/{email}) no primeiro login, seja por
   // Google (email já verificado) ou por senha (após o convidado confirmar o email).
-  // Sem convite, apenas cria o perfil padrão de quem entra pela primeira vez.
-  // Retorna 'needs-verification' quando há convite mas o email ainda não foi
-  // confirmado — o chamador desloga e mantém no login para o claim rodar depois.
-  const syncUserProfile = async (firebaseUser: User): Promise<'needs-verification' | void> => {
+  // Plataforma FECHADA: sem convite e sem perfil já existente, o login é barrado
+  // (não cria conta). Retorna 'needs-verification' quando há convite mas o email
+  // ainda não foi confirmado, e 'unauthorized' quando não há acesso — em ambos o
+  // chamador desloga e mantém no login.
+  const syncUserProfile = async (firebaseUser: User): Promise<'needs-verification' | 'unauthorized' | void> => {
     if (!firestore || !firebaseUser) return;
     const userRef = doc(firestore, 'users', firebaseUser.uid);
     const email = firebaseUser.email?.toLowerCase() ?? null;
@@ -195,21 +196,31 @@ export default function LoginPage() {
         }
       }
 
+      // Sem convite. Se já existe perfil (cliente criado pelo admin, ou membro já
+      // ativo), o login segue normal. Se NÃO existe, é um acesso avulso não
+      // autorizado — a plataforma é fechada, então bloqueia, reverte a conta de
+      // auth recém-criada (para não deixar conta órfã nem reservar o email) e mantém
+      // no login. As rules também negam o create do doc (defesa em profundidade).
       if (!docSnap.exists()) {
-        // merge para nunca sobrescrever um doc que porventura já exista.
-        await setDoc(
-          userRef,
-          {
-            displayName: fallbackName,
-            email: firebaseUser.email,
-            photoURL: firebaseUser.photoURL || '',
-            role: 'user',
-          },
-          { merge: true }
-        );
+        toast({
+          variant: 'destructive',
+          title: 'Acesso não autorizado',
+          description: 'Este email não tem acesso. Peça um convite ao administrador.',
+        });
+        await firebaseUser.delete().catch((e) => console.error('Rollback da conta falhou:', e));
+        return 'unauthorized';
       }
     } catch (error) {
+      // Erro inesperado (ex.: getDoc falhou por rede). NÃO navega — falha fechado:
+      // bloqueia e pede retry. Não apaga a conta aqui: o erro é transitório e o
+      // usuário pode ser legítimo (diferente do bloqueio determinístico acima).
       console.error('Error syncing user profile:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao entrar',
+        description: 'Não foi possível validar seu acesso agora. Tente novamente.',
+      });
+      return 'unauthorized';
     }
   };
 
@@ -239,7 +250,9 @@ export default function LoginPage() {
             {isSignup ? 'Criar conta' : 'Bem-vindo ao EvoluaConsults'}
           </CardTitle>
           <CardDescription>
-            {isSignup ? 'Crie sua conta para acessar o painel.' : 'Faça login para acessar o painel.'}
+            {isSignup
+              ? 'Recebeu um convite? Crie sua conta com o email convidado.'
+              : 'Faça login para acessar o painel.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
